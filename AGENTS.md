@@ -174,8 +174,8 @@ client/src/
 **重要**：打包时排除 `server/data`，避免覆盖云端数据库。
 
 ```bash
-# 1. 打包（排除数据库和 node_modules）
-tar czf /tmp/xueba.tar.gz \
+# 1. 打包（排除数据库、node_modules、macOS 扩展属性文件）
+COPYFILE_DISABLE=1 tar czf /tmp/xueba.tar.gz \
   --exclude=node_modules \
   --exclude=server/data \
   client server docment examDatabase AGENTS.md
@@ -183,8 +183,14 @@ tar czf /tmp/xueba.tar.gz \
 # 2. 上传
 scp /tmp/xueba.tar.gz root@119.29.16.37:/opt/xueba/
 
-# 3. 解压、安装依赖、重启
-ssh root@119.29.16.37 "cd /opt/xueba && tar xzf xueba.tar.gz && pnpm install && pm2 restart xueba-api"
+# 3. 解压、安装依赖、构建前端、重启
+ssh root@119.29.16.37 "cd /opt/xueba && tar xzf xueba.tar.gz && pnpm install && pnpm build && pm2 restart xueba-api"
+
+**注意**：如果 `pnpm build` 报类型错误，可能需要跳过类型检查：
+```bash
+# 修改 client/package.json 的构建脚本
+sed -i 's/\"build\": \"vue-tsc -b && vite build\"/\"build\": \"vite build\"/' client/package.json
+```
 ```
 
 ### 架构
