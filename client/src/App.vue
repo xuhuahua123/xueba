@@ -302,4 +302,18 @@ html, body, #app { height: 100%; font-family: var(--font-body); background: var(
   .topbar-title { font-size: 1.1rem; }
   .topbar-actions { width: 100%; justify-content: flex-start; gap: 8px; }
 }
+
+/* 小屏幕优化（手机竖屏） */
+@media (max-width: 420px) {
+  .top-nav { padding: 0 6px; gap: 4px; }
+  .top-nav-brand { display: none; }
+  .top-nav-tabs { flex: 1; justify-content: space-around; }
+  .top-nav-tabs button { 
+    padding: 6px 6px; 
+    font-size: .75rem;
+    flex: 1; 
+    text-align: center;
+  }
+  .hamburger-btn { padding: 6px 8px; margin-right: 4px; font-size: 1.3rem; }
+}
 </style>
