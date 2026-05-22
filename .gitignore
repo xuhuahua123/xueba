@@ -23,3 +23,13 @@ npm-debug.log*
 # 编辑器
 .vscode/
 .idea/
+
+# Agent 指令文件
+AGENTS.md
+
+# Todo
+todo.md
+
+# OpenCode 配置
+.opencode/
+.agent/
