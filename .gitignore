@@ -35,3 +35,4 @@ todo.md
 # OpenCode 配置
 .opencode/
 .agent/
+.agents/
