@@ -1,5 +1,6 @@
 # 依赖
 node_modules/
+package-lock.json
 
 # 数据库
 server/data/
@@ -11,6 +12,7 @@ server/data/
 # 构建产物
 dist/
 client/dist/
+*.tsbuildinfo
 
 # macOS
 .DS_Store
