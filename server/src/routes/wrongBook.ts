@@ -13,11 +13,11 @@ export async function wrongBookRoutes(app: FastifyInstance) {
 
   // 添加错题
   app.post('/wrong-book', async (req, reply) => {
-    const { documentId, questionIndex, type, stem, options, answer, explanation } = req.body as any
+    const { documentId, questionIndex, type, stem, options, answer, explanation, imageUrl } = req.body as any
     if (!documentId || questionIndex === undefined) {
       return reply.status(400).send({ error: 'Missing fields' })
     }
-    addWrongEntry({ documentId, questionIndex, type, stem, options, answer, explanation })
+    addWrongEntry({ documentId, questionIndex, type, stem, options, answer, explanation, imageUrl })
     return { ok: true }
   })
 

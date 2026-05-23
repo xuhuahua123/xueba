@@ -13,7 +13,7 @@ import { useResponsive } from '@/composables/useResponsive'
 const { isMobile } = useResponsive()
 
 // ===== 类型定义 =====
-interface ExamQuestion { id: number; stem: string; options?: { label: string; text: string }[]; answer: string; explanation: string }
+interface ExamQuestion { id: number; stem: string; options?: { label: string; text: string }[]; answer: string; explanation: string; image_url?: string }
 interface ExamSection { type: string; label: string; questions: ExamQuestion[] }
 interface ExamData { title: string; sections: ExamSection[] }
 interface ExamListItem { id: string; title: string; sections: { type: string; label: string; count: number }[]; total: number }
@@ -26,11 +26,15 @@ const loading = ref(true)
 const error = ref('')
 const sectionIdx = ref(0)                      // 当前题型分区索引
 const qIdx = ref(0)                           // 当前题目索引
-const userAnswers = ref<Record<number, string>>({})      // 用户答案
-const selectedOption = ref<Record<number, string>>({})  // 当前选中选项
+const userAnswers = ref<Record<string, string>>({})      // 用户答案
+const selectedOption = ref<Record<string, string>>({})  // 当前选中选项
 const showResult = ref(false)                 // 是否显示结果
-const submitted = ref<Set<number>>(new Set()) // 已提交题目
+const submitted = ref<Set<string>>(new Set()) // 已提交题目 key 集合
 const cardVisible = ref(false)                // 移动端答题卡弹窗
+
+// 各科目答题状态缓存（切换科目时保留）
+type SubjectCache = { userAnswers: Record<string, string>; submitted: Set<string> }
+const subjectCache = ref<Record<string, SubjectCache>>({})
 
 const BASE = '/api'
 
@@ -40,9 +44,17 @@ const subjectStats = computed(() => {
   const total = currentExam.value.sections.reduce((s, sec) => s + sec.questions.length, 0)
   const answered = submitted.value.size
   let correct = 0
-  for (const qid of submitted.value) {
-    const q = findQuestion(qid)
-    if (q && userAnswers.value[qid] === q.answer) correct++
+  for (const key of submitted.value) {
+    const [si, qid] = key.split('_').map(Number)
+    const sec = currentExam.value.sections[si]
+    if (!sec) continue
+    const q = sec.questions.find(qq => qq.id === qid)
+    if (!q) continue
+    const userAns = userAnswers.value[key] || ''
+    const isCorrect = sec.type === 'multi'
+      ? userAns === q.answer.replace(/\s/g, '')
+      : userAns === q.answer
+    if (isCorrect) correct++
   }
   return { answered, correct, total }
 })
@@ -68,12 +80,31 @@ function qKey(si: number, qid: number) { return `${si}_${qid}` }
 
 // 选择科目
 async function selectSubject(id: string) {
+  // 保存当前科目答题状态
+  if (currentSubjectId.value) {
+    subjectCache.value[currentSubjectId.value] = {
+      userAnswers: { ...userAnswers.value },
+      submitted: new Set(submitted.value)
+    }
+  }
+
   currentSubjectId.value = id; loading.value = true; sectionIdx.value = 0; qIdx.value = 0
-  userAnswers.value = {}; showResult.value = false; submitted.value.clear(); selectedOption.value = {}
+  showResult.value = false; selectedOption.value = {}
+
+  // 尝试从内存缓存恢复
+  const cached = subjectCache.value[id]
+  if (cached) {
+    userAnswers.value = { ...cached.userAnswers }
+    submitted.value = new Set(cached.submitted)
+  } else {
+    userAnswers.value = {}
+    submitted.value = new Set()
+  }
+
   const res = await fetch(`${BASE}/exams/${id}`)
   currentExam.value = await res.json()
 
-  // 恢复已保存的答题进度
+  // 从后端恢复已保存的答题进度（覆盖/补充内存缓存）
   try {
     for (let si = 0; si < currentExam.value!.sections.length; si++) {
       const pRes = await fetch(`${BASE}/exam-progress/${encodeURIComponent(id)}?sectionIdx=${si}`)
@@ -132,15 +163,16 @@ function submitAnswer() {
   submitted.value.add(key)
   showResult.value = true
   const q = currentQ.value!
-  const isCorrect = q.type === 'multi'
+  const isCorrect = currentSection.value!.type === 'multi'
     ? label === q.answer.replace(/\s/g, '')
     : label === q.answer
   // 答错自动加入错题本
   if (!isCorrect) {
     addWrongEntry({
-      documentId: `exam_${currentSubjectId.value}`, questionIndex: q.id,
+      documentId: `exam_${currentSubjectId.value}`, questionIndex: currentGlobalIdx.value,
       type: currentSection.value!.type, stem: q.stem,
-      options: q.options || [], answer: q.answer, explanation: q.explanation || ''
+      options: q.options || [], answer: q.answer, explanation: q.explanation || '',
+      imageUrl: q.image_url
     })
   }
   // 保存答题进度到后端
@@ -166,22 +198,16 @@ function goPrev() {
 }
 
 // 获取题目状态（未答/正确/错误）
-function getAnswerStatus(qid: number) {
-  const key = qKey(sectionIdx.value, qid)
+function getAnswerStatus(si: number, qid: number) {
+  const key = qKey(si, qid)
   if (!submitted.value.has(key)) return 'unanswered'
-  const q = findQuestion(qid)
+  const sec = currentExam.value?.sections[si]
+  if (!sec) return 'unanswered'
+  const q = sec.questions.find(qq => qq.id === qid)
   if (!q) return 'unanswered'
   const userAns = userAnswers.value[key] || ''
-  const correctAns = q.type === 'multi' ? q.answer.replace(/\s/g, '') : q.answer
+  const correctAns = sec.type === 'multi' ? q.answer.replace(/\s/g, '') : q.answer
   return userAns === correctAns ? 'correct' : 'wrong'
-}
-
-// 查找题目
-function findQuestion(qid: number) {
-  if (!currentExam.value) return null
-  for (const sec of currentExam.value.sections)
-    for (const q of sec.questions) if (q.id === qid) return q
-  return null
 }
 
 // 计算题目全局序号
@@ -243,13 +269,14 @@ onMounted(loadSubjects)
       <!-- Section tabs -->
       <div class="exam-section-tabs">
         <button v-for="(sec, si) in currentExam.sections" :key="si" class="exam-section-tab" :class="{ active: sectionIdx === si }" @click="switchSection(si)">
-          {{ abbr(sec.label) }} <span class="exam-section-stat">{{ getAnswerStatus(sec.questions[0]?.id) === 'unanswered' ? '' : '●' }}</span>
+          {{ abbr(sec.label) }} <span class="exam-section-stat">{{ getAnswerStatus(si, sec.questions[0]?.id) === 'unanswered' ? '' : '●' }}</span>
         </button>
       </div>
       <div class="exam-question">
         <div class="exam-q-stem">
           <span class="exam-q-type" :class="currentSection.type">{{ typeLabel(currentSection.type) }}</span>
-          {{ currentQ.stem }}
+          <img v-if="currentQ.image_url" :src="currentQ.image_url" class="exam-q-img" alt="题目图片" />
+          <span v-else>{{ currentQ.stem }}</span>
         </div>
         <div class="exam-q-options">
           <template v-if="currentSection.type === 'judge'">
@@ -270,7 +297,7 @@ onMounted(loadSubjects)
               correct: submitted.has(qKey(sectionIdx,currentQ.id)) && (currentQ.answer || '').includes(opt.label),
               wrong: submitted.has(qKey(sectionIdx,currentQ.id)) && (userAnswers[qKey(sectionIdx,currentQ.id)] || '').includes(opt.label) && !(currentQ.answer || '').includes(opt.label)
             }" @click="selectOption(opt.label)">
-              <span class="exam-opt-label">{{ opt.label }}</span><span>{{ opt.text }}</span>
+              <span class="exam-opt-label">{{ opt.label }}</span><span v-if="opt.text">{{ opt.text }}</span>
             </button>
           </template>
         </div>
@@ -278,8 +305,8 @@ onMounted(loadSubjects)
           <n-button type="primary" size="medium" @click="submitAnswer">提交答案</n-button>
         </div>
         <div v-if="submitted.has(qKey(sectionIdx,currentQ.id))" class="exam-result">
-          <div :class="userAnswers[qKey(sectionIdx,currentQ.id)] === currentQ.answer ? 'exam-result-ok' : 'exam-result-no'">
-            {{ userAnswers[qKey(sectionIdx,currentQ.id)] === currentQ.answer ? '✓ 回答正确' : '✗ 回答错误' }} · 答案：{{ currentQ.answer }}
+          <div :class="(currentSection.type === 'multi' ? userAnswers[qKey(sectionIdx,currentQ.id)] === currentQ.answer.replace(/\s/g, '') : userAnswers[qKey(sectionIdx,currentQ.id)] === currentQ.answer) ? 'exam-result-ok' : 'exam-result-no'">
+            {{ (currentSection.type === 'multi' ? userAnswers[qKey(sectionIdx,currentQ.id)] === currentQ.answer.replace(/\s/g, '') : userAnswers[qKey(sectionIdx,currentQ.id)] === currentQ.answer) ? '✓ 回答正确' : '✗ 回答错误' }} · 答案：{{ currentQ.answer }}
           </div>
           <div class="exam-result-exp" v-if="currentQ.explanation">{{ currentQ.explanation }}</div>
         </div>
@@ -296,7 +323,7 @@ onMounted(loadSubjects)
         答题卡 · {{ typeLabel(currentSection.type) }}
       </div>
       <div class="exam-card-grid">
-        <span v-for="q in currentSection.questions" :key="q.id" class="exam-card-dot" :class="getAnswerStatus(q.id)" @click="jumpToQuestion(q.id)">{{ globalQNum(sectionIdx, q.id) }}</span>
+        <span v-for="q in currentSection.questions" :key="q.id" class="exam-card-dot" :class="getAnswerStatus(sectionIdx, q.id)" @click="jumpToQuestion(q.id)">{{ globalQNum(sectionIdx, q.id) }}</span>
       </div>
       <div class="exam-card-legend">
         <span class="exam-card-leg"><span class="exam-card-dot unanswered"></span> 未答</span>
@@ -306,7 +333,7 @@ onMounted(loadSubjects)
     </div>
     <!-- 移动端：浮动按钮 + 弹窗答题卡 -->
     <button v-if="isMobile && currentSection" class="exam-card-btn" @click="cardVisible = true">
-      <span class="exam-card-btn-dot" :class="getAnswerStatus(currentQ?.id)"></span>
+      <span class="exam-card-btn-dot" :class="getAnswerStatus(sectionIdx, currentQ?.id ?? 0)"></span>
       {{ currentGlobalIdx }}/{{ totalQuestions }}
     </button>
     <n-drawer v-if="isMobile" v-model:show="cardVisible" placement="bottom" :height="360">
@@ -316,7 +343,7 @@ onMounted(loadSubjects)
           <button class="exam-card-drawer-close" @click="cardVisible = false">✕</button>
         </div>
         <div class="exam-card-drawer-grid" v-if="currentSection">
-          <span v-for="q in currentSection.questions" :key="q.id" class="exam-card-dot" :class="getAnswerStatus(q.id)" @click="jumpToQuestion(q.id); cardVisible = false">{{ globalQNum(sectionIdx, q.id) }}</span>
+          <span v-for="q in currentSection.questions" :key="q.id" class="exam-card-dot" :class="getAnswerStatus(sectionIdx, q.id)" @click="jumpToQuestion(q.id); cardVisible = false">{{ globalQNum(sectionIdx, q.id) }}</span>
         </div>
         <div class="exam-card-drawer-legend">
           <span><span class="exam-card-dot unanswered"></span> 未答</span>
@@ -367,6 +394,7 @@ onMounted(loadSubjects)
 
 .exam-question { background: var(--card-bg); border-radius: var(--radius); padding: 28px 32px; box-shadow: 0 1px 4px rgba(0,0,0,.04); margin-bottom: 16px; flex: 1; }
 .exam-q-stem { font-size: 1.05rem; line-height: 1.8; margin-bottom: 22px; color: var(--ink-black); }
+.exam-q-img { max-width: 100%; display: block; margin: 12px 0; border-radius: 6px; border: 1px solid var(--gray-200); }
 .exam-q-type { display: inline-block; padding: 2px 12px; border-radius: 12px; font-size: .78rem; font-weight: 600; color: #fff; margin-right: 10px; }
 .exam-q-type.judge { background: var(--cinnabar-red); }
 .exam-q-type.single { background: #4a7fb5; }

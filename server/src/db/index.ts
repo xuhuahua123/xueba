@@ -52,6 +52,7 @@ export async function initDb() {
       options TEXT NOT NULL,
       answer TEXT NOT NULL,
       explanation TEXT NOT NULL,
+      image_url TEXT NOT NULL DEFAULT '',
       wrong_count INTEGER NOT NULL DEFAULT 1,
       consecutive_correct INTEGER NOT NULL DEFAULT 0,
       mastered INTEGER NOT NULL DEFAULT 0,
@@ -59,6 +60,9 @@ export async function initDb() {
       updated_at INTEGER NOT NULL
     )
   `)
+
+  // 迁移：旧表补 image_url 列
+  try { db.run("ALTER TABLE wrong_book ADD COLUMN image_url TEXT NOT NULL DEFAULT ''") } catch {}
 
   // 创建 AI 解释缓存表
   db.run(`
@@ -132,14 +136,19 @@ export function setExplanation(key: string, text: string) {
 
 // ===== 错题本 =====
 export function getWrongBook(): any[] {
-  const rows = db.exec("SELECT * FROM wrong_book ORDER BY updated_at DESC")
+  const rows = db.exec(`
+    SELECT id, document_id, question_index, type, stem, options,
+           answer, explanation, image_url, wrong_count,
+           consecutive_correct, mastered, created_at, updated_at
+    FROM wrong_book ORDER BY updated_at DESC
+  `)
   if (!rows[0]) return []
   return rows[0].values.map(row => ({
     id: row[0], documentId: row[1], questionIndex: row[2], type: row[3],
     stem: row[4], options: JSON.parse(row[5] as string),
-    answer: row[6], explanation: row[7], wrongCount: row[8],
-    consecutiveCorrect: row[9], mastered: !!row[10],
-    createdAt: row[11], updatedAt: row[12]
+    answer: row[6], explanation: row[7], imageUrl: row[8],
+    wrongCount: row[9], consecutiveCorrect: row[10],
+    mastered: !!row[11], createdAt: row[12], updatedAt: row[13]
   }))
 }
 
@@ -147,6 +156,7 @@ export function getWrongBook(): any[] {
 export function addWrongEntry(entry: {
   documentId: string; questionIndex: number; type: string; stem: string
   options: { label: string; text: string }[]; answer: string; explanation: string
+  imageUrl?: string
 }) {
   const existing = db.exec(
     "SELECT id, wrong_count FROM wrong_book WHERE document_id = ? AND question_index = ?",
@@ -161,9 +171,9 @@ export function addWrongEntry(entry: {
     )
   } else {
     db.run(
-      "INSERT INTO wrong_book (document_id, question_index, type, stem, options, answer, explanation, wrong_count, consecutive_correct, mastered, created_at, updated_at) VALUES (?,?,?,?,?,?,?,1,0,0,?,?)",
+      "INSERT INTO wrong_book (document_id, question_index, type, stem, options, answer, explanation, image_url, wrong_count, consecutive_correct, mastered, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,1,0,0,?,?)",
       [entry.documentId, entry.questionIndex, entry.type, entry.stem,
-       JSON.stringify(entry.options), entry.answer, entry.explanation,
+       JSON.stringify(entry.options), entry.answer, entry.explanation, entry.imageUrl || '',
        Date.now(), Date.now()]
     )
   }

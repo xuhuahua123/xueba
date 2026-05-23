@@ -108,6 +108,7 @@ export async function fetchExplanation(docId: string, sectionId: string): Promis
 export async function addWrongEntry(entry: {
   documentId: string; questionIndex: number; type: string; stem: string
   options: { label: string; text: string }[]; answer: string; explanation: string
+  imageUrl?: string
 }) {
   await req('/wrong-book', {
     method: 'POST',
