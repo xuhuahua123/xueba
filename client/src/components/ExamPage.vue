@@ -382,7 +382,7 @@ onMounted(loadSubjects)
 .exam-header-meta { font-size: .9rem; color: var(--gray-600); font-weight: 500; }
 
 /* Section tabs */
-.exam-section-tabs { display: flex; gap: 6px; margin-bottom: 20px; }
+.exam-section-tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-shrink: 0; }
 .exam-section-tab {
   border: 1px solid var(--gray-300); background: var(--card-bg); padding: 6px 14px;
   border-radius: 20px; font-size: .82rem; cursor: pointer; color: var(--gray-700);
@@ -392,7 +392,7 @@ onMounted(loadSubjects)
 .exam-section-tab.active { background: var(--cinnabar-red); color: #fff; border-color: var(--cinnabar-red); font-weight: 600; }
 .exam-section-stat { font-size: 10px; color: var(--bamboo-green); }
 
-.exam-question { background: var(--card-bg); border-radius: var(--radius); padding: 28px 32px; box-shadow: 0 1px 4px rgba(0,0,0,.04); margin-bottom: 16px; flex: 1; }
+.exam-question { background: var(--card-bg); border-radius: var(--radius); padding: 28px 32px; box-shadow: 0 1px 4px rgba(0,0,0,.04); margin-bottom: 16px; flex: 1 1 0; min-height: 0; overflow-y: auto; }
 .exam-q-stem { font-size: 1.05rem; line-height: 1.8; margin-bottom: 22px; color: var(--ink-black); }
 .exam-q-img { max-width: 100%; display: block; margin: 12px 0; border-radius: 6px; border: 1px solid var(--gray-200); }
 .exam-q-type { display: inline-block; padding: 2px 12px; border-radius: 12px; font-size: .78rem; font-weight: 600; color: #fff; margin-right: 10px; }
@@ -458,7 +458,7 @@ onMounted(loadSubjects)
 
 /* 移动端：浮动答题卡按钮 */
 .exam-card-btn {
-  position: fixed; bottom: 20px; right: 20px;
+  position: fixed; bottom: 80px; right: 20px;
   display: flex; align-items: center; gap: 8px;
   padding: 12px 20px; border: none; border-radius: 24px;
   background: var(--cinnabar-red); color: #fff;
